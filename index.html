@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habit Warrior</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c89b5b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='5' fill='%23111119' stroke='none'/%3E%3Cpolyline points='14.5 17.5 3 6 3 3 6 3 17.5 14.5'/%3E%3Cline x1='13' x2='19' y1='19' y2='13'/%3E%3Cpolyline points='14.5 6.5 18 3 21 3 21 6 17.5 9.5'/%3E%3Cline x1='5' x2='9' y1='14' y2='18'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/styles.css?v=8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- 3D battlefield canvas -->
+  <canvas id="scene"></canvas>
+
+  <!-- World-space HTML labels (health bars + name tags above 3D entities) -->
+  <div id="world-labels" class="world-labels"></div>
+
+  <!-- Floating damage / xp text (screen-space) -->
+  <div id="floaters" class="floaters"></div>
+
+  <!-- Top HUD -->
+  <header class="hud-top">
+    <div class="brand">
+      <div class="brand-mark" data-icon="swords"></div>
+      <div class="brand-text">
+        <h1>Habit Warrior</h1>
+        <span>Build habits. Track progress.</span>
+      </div>
+    </div>
+
+    <div class="player-stats">
+      <div class="stat level-stat">
+        <div class="stat-icon accent" data-icon="level"></div>
+        <div class="stat-body">
+          <div class="stat-label">Level <span class="mono" id="stat-level">1</span></div>
+          <div class="xp-bar"><div class="xp-fill" id="xp-fill"></div></div>
+          <div class="stat-sub"><span id="stat-xp">0</span> / <span id="stat-xp-needed">100</span> XP</div>
+        </div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-icon" data-icon="coins"></div>
+        <div class="stat-body">
+          <div class="stat-label">Gold</div>
+          <div class="stat-value" id="stat-gold">0</div>
+        </div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-icon" data-icon="flame"></div>
+        <div class="stat-body">
+          <div class="stat-label">Streak</div>
+          <div class="stat-value"><span id="stat-streak">0</span> <small>days</small></div>
+        </div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-icon" data-icon="power"></div>
+        <div class="stat-body">
+          <div class="stat-label">Power</div>
+          <div class="stat-value" id="stat-power">10</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Left panel: habits list -->
+  <aside class="panel panel-left">
+    <div class="panel-header">
+      <h2>Today</h2>
+      <button class="btn btn-primary" id="btn-add-habit"
+        onclick="if(window.openHabitModal)window.openHabitModal();else document.getElementById('habit-modal').hidden=false;">
+        <span data-icon="plus"></span>
+        <span>New Habit</span>
+      </button>
+    </div>
+    <div class="panel-sub">Each habit appears as a monster in the arena. Complete it to land a strike.</div>
+    <ul class="habit-list" id="habit-list"></ul>
+    <div class="empty-state" id="empty-state" hidden>
+      <div class="empty-icon" data-icon="shield"></div>
+      <p>No habits yet. Add one to begin tracking.</p>
+    </div>
+  </aside>
+
+  <!-- Right panel: leaderboard / achievements / activity -->
+  <aside class="panel panel-right">
+    <div class="panel-header">
+      <h2>Leaderboard</h2>
+    </div>
+    <div class="panel-sub">Arena rivals · live ranking.</div>
+    <ol class="leaderboard" id="leaderboard"></ol>
+
+    <div class="panel-section">
+      <h3>Achievements</h3>
+      <ul class="achievement-list" id="achievement-list"></ul>
+    </div>
+
+    <div class="panel-section">
+      <h3>Activity</h3>
+      <ul class="battle-log" id="battle-log"></ul>
+    </div>
+  </aside>
+
+  <!-- Controls overlay (keybinds hint, top-right of canvas) -->
+  <div class="controls-hint" id="controls-hint">
+    <div class="ch-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Move</span></div>
+    <div class="ch-row"><kbd>F</kbd><span>or</span><kbd>Space</kbd><span>Attack</span></div>
+    <div class="ch-row"><kbd>V</kbd><span>Camera</span><kbd>R</kbd><span>Focus</span></div>
+    <div class="ch-row"><span class="ch-mouse">click monster</span><span>strike</span></div>
+  </div>
+
+  <!-- Bottom action bar -->
+  <footer class="action-bar">
+    <button class="action-btn" id="btn-camera" title="Toggle camera mode (V)">
+      <span data-icon="target"></span><span id="camera-label">Orbit</span>
+    </button>
+    <button class="action-btn" id="btn-focus" title="Re-center the camera (R)">
+      <span data-icon="rotate"></span><span>Focus</span>
+    </button>
+    <button class="action-btn highlight" id="btn-analytics" title="View progress analytics"
+      onclick="if(window.openAnalytics)window.openAnalytics();else document.getElementById('analytics-modal').hidden=false;">
+      <span data-icon="chart"></span><span>Analytics</span>
+    </button>
+    <button class="action-btn" id="btn-reset-day" title="Advance to the next day (also auto-runs at midnight)">
+      <span data-icon="sunrise"></span><span>New Day</span>
+    </button>
+    <button class="action-btn danger" id="btn-reset-all" title="Wipe all data and start over">
+      <span data-icon="x"></span><span>Reset</span>
+    </button>
+  </footer>
+
+  <!-- Analytics modal -->
+  <div class="modal-backdrop analytics-backdrop" id="analytics-modal" hidden>
+    <div class="modal analytics-modal">
+      <div class="modal-header">
+        <div class="analytics-title">
+          <span data-icon="chart" class="analytics-title-icon"></span>
+          <h2>Analytics</h2>
+        </div>
+        <div class="analytics-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="personal" role="tab">Personal</button>
+          <button class="tab-btn" data-tab="arena" role="tab">Arena</button>
+        </div>
+        <button class="icon-btn" id="btn-close-analytics" data-icon="x"
+          onclick="document.getElementById('analytics-modal').hidden=true;"></button>
+      </div>
+
+      <div class="analytics-body">
+        <!-- ============ Personal tab ============ -->
+        <section class="tab-pane active" data-pane="personal">
+          <div class="stat-grid" id="ap-stat-grid"></div>
+
+          <div class="charts-grid">
+            <div class="chart-card chart-wide">
+              <div class="chart-head">
+                <h3>Last 8 weeks</h3>
+                <span class="chart-sub" id="ap-heatmap-sub">—</span>
+              </div>
+              <div class="heatmap" id="ap-heatmap"></div>
+              <div class="heatmap-legend">
+                <span>Less</span>
+                <span class="hl-cell" data-level="0"></span>
+                <span class="hl-cell" data-level="1"></span>
+                <span class="hl-cell" data-level="2"></span>
+                <span class="hl-cell" data-level="3"></span>
+                <span class="hl-cell" data-level="4"></span>
+                <span>More</span>
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Kills by difficulty</h3>
+                <span class="chart-sub" id="ap-kills-sub">—</span>
+              </div>
+              <canvas class="chart-canvas chart-square" id="ap-donut"></canvas>
+              <ul class="legend" id="ap-donut-legend"></ul>
+            </div>
+
+            <div class="chart-card chart-wide">
+              <div class="chart-head">
+                <h3>Last 14 days · completions vs XP</h3>
+                <span class="chart-sub" id="ap-line-sub">—</span>
+              </div>
+              <canvas class="chart-canvas chart-tall" id="ap-line"></canvas>
+            </div>
+
+            <div class="chart-card chart-wide">
+              <div class="chart-head">
+                <h3>Top habits</h3>
+                <span class="chart-sub" id="ap-bars-sub">—</span>
+              </div>
+              <canvas class="chart-canvas chart-tall" id="ap-bars"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Combat profile</h3>
+                <span class="chart-sub">accuracy &amp; force</span>
+              </div>
+              <ul class="kv" id="ap-combat"></ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Arena tab ============ -->
+        <section class="tab-pane" data-pane="arena">
+          <div class="stat-grid" id="aa-stat-grid"></div>
+
+          <div class="charts-grid">
+            <div class="chart-card chart-wide">
+              <div class="chart-head">
+                <h3>Live leaderboard</h3>
+                <span class="chart-sub" id="aa-lb-sub">—</span>
+              </div>
+              <table class="lb-table" id="aa-leaderboard"></table>
+            </div>
+
+            <div class="chart-card chart-wide">
+              <div class="chart-head">
+                <h3>Kills over session</h3>
+                <span class="chart-sub">player vs rivals</span>
+              </div>
+              <canvas class="chart-canvas chart-tall" id="aa-line"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Levels</h3>
+                <span class="chart-sub">current arena tier</span>
+              </div>
+              <canvas class="chart-canvas chart-tall" id="aa-bars"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Damage dealt</h3>
+                <span class="chart-sub">your output</span>
+              </div>
+              <ul class="kv" id="aa-combat"></ul>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: add habit -->
+  <div class="modal-backdrop" id="habit-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">New Habit</h2>
+        <button class="icon-btn" id="btn-close-modal" data-icon="x"></button>
+      </div>
+      <form id="habit-form" class="modal-body">
+        <label class="field">
+          <span>Name</span>
+          <input type="text" id="field-name" placeholder="e.g. Meditate 10 minutes" maxlength="48" required />
+        </label>
+
+        <div class="field">
+          <span>Icon</span>
+          <div class="icon-picker" id="icon-picker"></div>
+        </div>
+
+        <div class="field">
+          <span>Difficulty</span>
+          <div class="seg-control" id="difficulty-picker">
+            <button type="button" data-diff="easy" class="active">
+              <strong>Easy</strong><small>30 HP · +20 XP</small>
+            </button>
+            <button type="button" data-diff="medium">
+              <strong>Medium</strong><small>60 HP · +50 XP</small>
+            </button>
+            <button type="button" data-diff="hard">
+              <strong>Hard</strong><small>120 HP · +120 XP</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Verification <small class="field-hint">No fake completions</small></span>
+          <div class="seg-control wrap" id="tracking-picker">
+            <button type="button" data-mode="manual" class="active">
+              <strong>Manual</strong><small>tap to strike</small>
+            </button>
+            <button type="button" data-mode="distance">
+              <strong>GPS distance</strong><small>walk · run · cycle</small>
+            </button>
+            <button type="button" data-mode="steps">
+              <strong>Steps</strong><small>phone accelerometer</small>
+            </button>
+            <button type="button" data-mode="focus">
+              <strong>Focus time</strong><small>tab + active input</small>
+            </button>
+            <button type="button" data-mode="stillness">
+              <strong>Stillness</strong><small>phone must stay still</small>
+            </button>
+          </div>
+        </div>
+
+        <label class="field tracking-goal-field" id="tracking-goal-field" hidden>
+          <span>Daily goal <span class="goal-unit" id="goal-unit">km</span></span>
+          <input type="number" id="field-goal" min="1" step="1" value="5" />
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-submit-habit">Add Habit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Level up toast -->
+  <div class="levelup" id="levelup" hidden>
+    <div class="levelup-inner">
+      <span data-icon="star"></span>
+      <div class="levelup-text">
+        <small>Level Up</small>
+        <strong>Reached Level <span id="levelup-num">2</span></strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js (and addons) via CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module" src="js/main.js?v=8"></script>
+</body>
+</html>
